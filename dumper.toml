@@ -1,0 +1,13 @@
+[database]
+user     = "dein_benutzername"
+password = "dein_passwort"
+host     = "127.0.0.1"
+port     = 3306
+
+[ssl]
+enabled             = true
+ca                  = "/pfad/zu/ca-cert.pem"
+cert                = "/pfad/zu/client-cert.pem"
+key                 = "/pfad/zu/client-key.pem"
+verify_server_cert  = true
+

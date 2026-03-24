@@ -68,9 +68,25 @@ func (r *BackupRunner) generateFilePath() string {
 }
 
 func (r *BackupRunner) executeDump(destPath string) error {
+	// Write password to a temp file and pass it via --defaults-extra-file.
+	// This avoids the password being visible in process listings (ps aux)
+	// or via /proc/<PID>/environ.
+	tmpFile, err := os.CreateTemp("", "sqldumper-*.cnf")
+	if err != nil {
+		return fmt.Errorf("error creating temporary config file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	_, err = fmt.Fprintf(tmpFile, "[client]\npassword=%s\n", r.Config.Database.Password)
+	tmpFile.Close()
+	if err != nil {
+		return fmt.Errorf("error writing temporary config file: %w", err)
+	}
+
+	// --defaults-extra-file must be the first argument
 	args := []string{
+		fmt.Sprintf("--defaults-extra-file=%s", tmpFile.Name()),
 		fmt.Sprintf("--user=%s", r.Config.Database.User),
-		fmt.Sprintf("--password=%s", r.Config.Database.Password),
 		fmt.Sprintf("--host=%s", r.Config.Database.Host),
 		fmt.Sprintf("--port=%d", r.Config.Database.Port),
 	}

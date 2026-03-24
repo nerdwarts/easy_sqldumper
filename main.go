@@ -12,6 +12,12 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+const (
+	DefaultPort     = 3306
+	DirPerms        = 0755
+	TimestampFormat = "2006-01-02_15-04-05"
+)
+
 type Config struct {
 	Database struct {
 		User     string `toml:"user"`
@@ -28,85 +34,121 @@ type Config struct {
 	} `toml:"ssl"`
 }
 
-func main() {
-	dbName := flag.String("db", "", "Name of the database to be backed up (required)")
-	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
-	configFile := flag.String("config", "./dumper.toml", "Path to the TOML configuration file")
+type BackupRunner struct {
+	Config    Config
+	DBName    string
+	BackupDir string
+}
 
-	flag.Parse()
-
-	if *dbName == "" {
-		fmt.Println("❌ Error: Please provide a database name.")
-		fmt.Println("Example usage: ./sqldumper -db my_database")
-		flag.Usage() // Shows help for all params
-		os.Exit(1)
+func (r *BackupRunner) Run() error {
+	if err := os.MkdirAll(r.BackupDir, DirPerms); err != nil {
+		return fmt.Errorf("error creating backup directory '%s': %w", r.BackupDir, err)
 	}
 
-	// 4. Load TOML config
-	var config Config
-	f, err := os.Open(*configFile)
-	if err != nil {
-		log.Fatalf("❌ Error opening config file '%s': %v\n", *configFile, err)
-	}
-	defer f.Close()
+	fullPath := r.generateFilePath()
 
-	if err := toml.NewDecoder(f).Decode(&config); err != nil {
-		log.Fatalf("❌ Error parsing config file '%s': %v\n", *configFile, err)
-	}
-
-	// Set the default Port if not provided
-	if config.Database.Port == 0 {
-		config.Database.Port = 3306
+	fmt.Printf("⏳ Creating backup of database '%s'...\n", r.DBName)
+	if dumpErr := r.executeDump(fullPath); dumpErr != nil {
+		// Delete the file if the backup fails to avoid leaving a partial backup
+		err := os.Remove(fullPath)
+		if err != nil {
+			log.Printf("⚠️ Warning: failed to delete partial backup file: %v", err)
+		}
+		return dumpErr
 	}
 
-	if err := os.MkdirAll(*backupDir, 0755); err != nil {
-		log.Fatalf("❌ Error creating backup directory '%s': %v\n", *backupDir, err)
-	}
+	fmt.Printf("✅ Backup successfully created: %s\n", fullPath)
+	return nil
+}
 
-	timestampFormat := "2006-01-02_15-04-05"
-	timestamp := time.Now().Format(timestampFormat) // Format: YYYY-MM-DD_HH-MM-SS
-	fileName := fmt.Sprintf("%s_%s.sql", *dbName, timestamp)
-	fullPath := filepath.Join(*backupDir, fileName)
+func (r *BackupRunner) generateFilePath() string {
+	timestamp := time.Now().Format(TimestampFormat)
+	fileName := fmt.Sprintf("%s_%s.sql", r.DBName, timestamp)
+	return filepath.Join(r.BackupDir, fileName)
+}
 
+func (r *BackupRunner) executeDump(destPath string) error {
 	args := []string{
-		fmt.Sprintf("--user=%s", config.Database.User),
-		fmt.Sprintf("--password=%s", config.Database.Password),
-		fmt.Sprintf("--host=%s", config.Database.Host),
-		fmt.Sprintf("--port=%d", config.Database.Port),
+		fmt.Sprintf("--user=%s", r.Config.Database.User),
+		fmt.Sprintf("--password=%s", r.Config.Database.Password),
+		fmt.Sprintf("--host=%s", r.Config.Database.Host),
+		fmt.Sprintf("--port=%d", r.Config.Database.Port),
 	}
-	if config.SSL.Enabled {
+	if r.Config.SSL.Enabled {
 		args = append(args,
-			fmt.Sprintf("--ssl-ca=%s", config.SSL.CA),
-			fmt.Sprintf("--ssl-cert=%s", config.SSL.Cert),
-			fmt.Sprintf("--ssl-key=%s", config.SSL.Key),
+			fmt.Sprintf("--ssl-ca=%s", r.Config.SSL.CA),
+			fmt.Sprintf("--ssl-cert=%s", r.Config.SSL.Cert),
+			fmt.Sprintf("--ssl-key=%s", r.Config.SSL.Key),
 		)
-		if config.SSL.VerifyServerCert {
+		if r.Config.SSL.VerifyServerCert {
 			args = append(args, "--ssl-verify-server-cert")
 		}
 	}
-	args = append(args, *dbName)
+	args = append(args, r.DBName)
 
 	cmd := exec.Command("mysqldump", args...)
 
-	outFile, err := os.Create(fullPath)
+	outFile, err := os.Create(destPath)
 	if err != nil {
-		log.Fatalf("❌ Error creating backup file '%s': %v\n", fullPath, err)
+		return fmt.Errorf("error creating backup file '%s': %w", destPath, err)
 	}
 	defer outFile.Close()
 
 	cmd.Stdout = outFile
 	cmd.Stderr = os.Stderr
 
-	fmt.Printf("⏳ Creating backup of database '%s'...\n", *dbName)
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("❌ Error creating backup: %v\n", err)
-		// Delete the file if the backup fails to avoid leaving a partial backup
-		err := os.Remove(fullPath)
-		if err != nil {
-			log.Printf("⚠️warning: failed to delete partial backup file: %v\n", err)
-		}
+		return fmt.Errorf("mysqldump failed: %w", err)
+	}
+
+	return nil
+}
+
+func main() {
+	dbName := flag.String("db", "", "Name of the database to be backed up (required)")
+	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
+	configFile := flag.String("config", "./dumper.toml", "Path to the TOML configuration file")
+	flag.Parse()
+
+	if *dbName == "" {
+		fmt.Fprintln(os.Stderr, "❌ Error: Please provide a database name.")
+		fmt.Println("Example usage: ./sqldumper -db my_database")
+		flag.Usage() // Shows help for all params
 		os.Exit(1)
 	}
 
-	fmt.Printf("✅ Backup successfully created: %s\n", fullPath)
+	config, err := loadConfig(*configFile)
+	if err != nil {
+		log.Fatalf("❌ Configuration error: %v", err)
+	}
+
+	runner := &BackupRunner{
+		Config:    config,
+		DBName:    *dbName,
+		BackupDir: *backupDir,
+	}
+
+	if err := runner.Run(); err != nil {
+		log.Fatalf("❌ Backup failed: %v\n", err)
+	}
+}
+
+func loadConfig(path string) (Config, error) {
+	var config Config
+
+	f, err := os.Open(path)
+	if err != nil {
+		return config, fmt.Errorf("error opening config file %q: %w", path, err)
+	}
+	defer f.Close()
+
+	if err := toml.NewDecoder(f).Decode(&config); err != nil {
+		return config, fmt.Errorf("error parsing config file %q: %w", path, err)
+	}
+
+	if config.Database.Port == 0 {
+		config.Database.Port = DefaultPort
+	}
+
+	return config, nil
 }

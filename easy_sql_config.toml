@@ -1,13 +1,33 @@
 [database]
-user     = "dein_benutzername"
-password = "dein_passwort"
-host     = "127.0.0.1"
+user     = "root"
+password = "1234"
+host     = "localhost"
 port     = 3306
 
 [ssl]
-enabled             = true
-ca                  = "/pfad/zu/ca-cert.pem"
-cert                = "/pfad/zu/client-cert.pem"
-key                 = "/pfad/zu/client-key.pem"
-verify_server_cert  = true
+enabled            = false
+ca                 = "/path/to/ca-cert.pem"
+cert               = "/path/to/client-cert.pem"
+key                = "/path/to/client-key.pem"
+verify_server_cert = false
 
+# Remote mode: mysql/mysqldump is executed directly inside the container.
+# type = "local"      → mysql/mysqldump available locally in PATH (default)
+# type = "docker"     → docker exec <container> mysqldump ...
+# type = "kubernetes" → kubectl exec <pod> -- mysqldump ...
+[remote]
+#type      = "local"
+
+# Docker example:
+# type         = "docker"
+# container    = "my-mysql-container"
+# mysql_bin    = "mariadb"
+# mysqldump_bin = "mariadb-dump"
+
+# Kubernetes example:
+type          = "kubernetes"
+namespace     = "default"
+pod           = "mariadb-685858c-w4xsg"
+mysql_bin     = "mariadb"
+mysqldump_bin = "mariadb-dump"
+# container = "mysql"   # optional, only needed for multi-container pods

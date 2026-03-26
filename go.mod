@@ -1,4 +1,4 @@
-module sqldumper
+module easy_sqldumper
 
 go 1.26
 

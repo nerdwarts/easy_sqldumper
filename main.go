@@ -123,7 +123,7 @@ func (r *BackupRunner) executeDump(destPath string) error {
 func main() {
 	dbName := flag.String("db", "", "Name of the database to be backed up (required)")
 	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
-	configFile := flag.String("config", "./dumper.toml", "Path to the TOML configuration file")
+	configFile := flag.String("config", "./easy_sql_config.toml", "Path to the TOML configuration file")
 	flag.Parse()
 
 	if *dbName == "" {

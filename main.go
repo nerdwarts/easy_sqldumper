@@ -25,9 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/table"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/huh"
 	"github.com/pelletier/go-toml/v2"
 )
 
@@ -334,87 +332,10 @@ func (r *BackupRunner) FetchDatabases() ([]string, error) {
 	return dbs, nil
 }
 
-// --- Bubble Tea TUI ---
-
-var baseStyle = lipgloss.NewStyle().
-	BorderStyle(lipgloss.NormalBorder()).
-	BorderForeground(lipgloss.Color("240"))
-
-type model struct {
-	table     table.Model
-	runner    *BackupRunner
-	state     string // "selecting", "backing_up", "done", "error"
-	err       error
-	backupMsg string
-}
-
-type backupFinishedMsg struct {
-	err error
-}
-
-func startBackup(r *BackupRunner) tea.Cmd {
-	return func() tea.Msg {
-		err := r.Run()
-		return backupFinishedMsg{err: err}
-	}
-}
-
-func (m model) Init() tea.Cmd {
-	return nil
-}
-
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	switch msg := msg.(type) {
-
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "esc", "q", "ctrl+c":
-			return m, tea.Quit
-		case "enter":
-			if m.state == "selecting" {
-				selectedDB := m.table.SelectedRow()[0]
-				m.runner.DBName = selectedDB
-				m.state = "backing_up"
-				return m, startBackup(m.runner)
-			}
-		}
-
-	case backupFinishedMsg:
-		if msg.err != nil {
-			m.state = "error"
-			m.err = msg.err
-		} else {
-			m.state = "done"
-		}
-		return m, tea.Quit
-	}
-
-	// Only update the table while in selection state
-	if m.state == "selecting" {
-		m.table, cmd = m.table.Update(msg)
-	}
-	return m, cmd
-}
-
-func (m model) View() string {
-	switch m.state {
-	case "selecting":
-		return baseStyle.Render(m.table.View()) + "\n  ↑/↓: Navigate • Enter: Start backup • q: Quit\n"
-	case "backing_up":
-		return fmt.Sprintf("\n  ⏳ Creating backup for database '%s'... Please wait.\n", m.runner.DBName)
-	case "done":
-		return fmt.Sprintf("\n  ✅ Backup for '%s' successfully created!\n", m.runner.DBName)
-	case "error":
-		return fmt.Sprintf("\n  ❌ Backup failed: %v\n", m.err)
-	}
-	return ""
-}
-
 // --- Main ---
 
 func main() {
-	dbName := flag.String("db", "", "Name of the database (if missing, TUI will open)")
+	dbName := flag.String("db", "", "Name of the database (if missing, interactive multiselect opens)")
 	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
 	configFile := flag.String("config", "./easy_sql_config.toml", "Path to the TOML configuration file")
 	dbType := flag.String("type", "", "Database type: \"mysql\" or \"postgres\" (overrides config)")
@@ -436,7 +357,7 @@ func main() {
 		BackupDir: *backupDir,
 	}
 
-	// Case 1: CLI mode (scripting / cronjob)
+	// Case 1: CLI mode (scripting / cronjob) — single database via -db flag
 	if *dbName != "" {
 		fmt.Printf("⏳ Creating backup of database '%s'...\n", runner.DBName)
 		if err := runner.Run(); err != nil {
@@ -446,58 +367,69 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Case 2: Interactive mode (Bubble Tea TUI)
-	fmt.Println("Connecting to database and loading tables...")
+	// Case 2: Interactive multiselect mode
+	fmt.Println("🔌☁️ Connecting to DBMS and loading databases...")
 	dbs, err := runner.FetchDatabases()
 	if err != nil {
 		log.Fatalf("❌ Error fetching databases: %v", err)
 	}
-
 	if len(dbs) == 0 {
 		fmt.Println("❌ No databases found (or insufficient privileges).")
 		os.Exit(1)
 	}
 
-	// Build table
-	columns := []table.Column{
-		{Title: "Database", Width: 30},
-	}
-	var rows []table.Row
-	for _, db := range dbs {
-		rows = append(rows, table.Row{db})
+	// Build huh options from the database list
+	opts := make([]huh.Option[string], len(dbs))
+	for i, db := range dbs {
+		opts[i] = huh.NewOption(db, db)
 	}
 
-	t := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(7),
+	var selected []string
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewMultiSelect[string]().
+				Title("Select databases to back up").
+				Description("ctrl+c: quit").
+				Options(opts...).
+				Value(&selected),
+		),
 	)
 
-	// Table styling
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(true)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	t.SetStyles(s)
-
-	// Start Bubble Tea program
-	m := model{
-		table:  t,
-		runner: runner,
-		state:  "selecting",
+	if err := form.Run(); err != nil {
+		// User cancelled (ctrl+c / esc)
+		fmt.Println("Cancelled.")
+		os.Exit(0)
 	}
 
-	if _, err := tea.NewProgram(m).Run(); err != nil {
-		fmt.Println("Error running program:", err)
+	if len(selected) == 0 {
+		fmt.Println("No databases selected. Nothing to do.")
+		os.Exit(0)
+	}
+
+	// Run backups for all selected databases
+	fmt.Printf("\nStarting backup for %d database(s)...\n\n", len(selected))
+	var failed []string
+	for _, db := range selected {
+		r := &BackupRunner{
+			Config:    config,
+			DBName:    db,
+			BackupDir: *backupDir,
+		}
+		fmt.Printf("⏳  %-30s", db)
+		if err := r.Run(); err != nil {
+			fmt.Printf("❌ failed: %v\n", err)
+			failed = append(failed, db)
+		} else {
+			fmt.Println("✅ done")
+		}
+	}
+
+	fmt.Println()
+	if len(failed) > 0 {
+		fmt.Printf("❌ %d backup(s) failed: %s\n", len(failed), strings.Join(failed, ", "))
 		os.Exit(1)
 	}
+	fmt.Printf("✅ All %d backup(s) completed successfully.\n", len(selected))
 }
 
 func loadConfig(path string) (Config, error) {

@@ -4,7 +4,7 @@ A minimal CLI tool that wraps `mysqldump` to create timestamped SQL backups of M
 
 ## Demo
 
-![Demo](docs/img.png)
+![Demo](docs/img_1.png)
 
 ## Features
 
@@ -137,7 +137,7 @@ pod        = "postgres-abc123"
 ## Usage
 
 ```bash
-# Interactive TUI – select the database from a list
+# Interactive TUI – multiselect databases from a list
 ./sqldumper
 
 # CLI / scripting / cron mode – non-interactive
@@ -146,6 +146,16 @@ pod        = "postgres-abc123"
 # Custom config and output directory
 ./sqldumper -db my_database -config /etc/easy_sql_config.toml -dir /var/backups/mysql
 ```
+
+### Interactive TUI controls
+
+| Key      | Action |
+|----------|--------|
+| `↑` / `↓` | Navigate up / down |
+| `x` or `Space` | Toggle selection |
+| `Ctrl+A` | Select / deselect all |
+| `Enter`  | Confirm selection and start backups |
+| `Ctrl+C` | Quit without doing anything |
 
 ### Flags
 

@@ -28,7 +28,7 @@ import (
 func main() {
 	dbName := flag.String("db", "", "Name of the database (if missing, interactive multiselect opens)")
 	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
-	configFile := flag.String("config", "./easy_sql_config.toml", "Path to the TOML configuration file")
+	configFile := flag.String("config", "./.easy_sql_config.toml", "Path to the TOML configuration file")
 	dbType := flag.String("type", "", "Database type: \"mysql\" or \"postgres\" (overrides config)")
 	flag.Parse()
 

@@ -19,6 +19,10 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"easy_sqldumper/internal/config"
+	"easy_sqldumper/internal/runner"
+	"easy_sqldumper/internal/tui"
 )
 
 func main() {
@@ -28,25 +32,25 @@ func main() {
 	dbType := flag.String("type", "", "Database type: \"mysql\" or \"postgres\" (overrides config)")
 	flag.Parse()
 
-	config, err := loadConfig(*configFile)
+	cfg, err := config.LoadConfig(*configFile)
 	if err != nil {
 		log.Fatalf("❌ Configuration error: %v", err)
 	}
 
 	// CLI flag overrides config file
 	if *dbType != "" {
-		config.Database.Type = *dbType
+		cfg.Database.Type = *dbType
 	}
 
 	// Case 1: CLI mode (scripting / cronjob) — single database via -db flag
 	if *dbName != "" {
 		fmt.Printf("⏳ Creating backup of database '%s'...\n", *dbName)
-		runner := &BackupRunner{
-			Config:    config,
+		r := &runner.BackupRunner{
+			Config:    cfg,
 			DBName:    *dbName,
 			BackupDir: *backupDir,
 		}
-		if err := runner.Run(); err != nil {
+		if err := r.Run(); err != nil {
 			log.Fatalf("❌ Backup failed: %v\n", err)
 		}
 		fmt.Println("✅ Backup successfully created.")
@@ -54,5 +58,5 @@ func main() {
 	}
 
 	// Case 2: Interactive multiselect TUI
-	runInteractive(config, *backupDir)
+	tui.RunInteractive(cfg, *backupDir)
 }

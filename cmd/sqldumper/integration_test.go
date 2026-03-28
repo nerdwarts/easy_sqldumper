@@ -26,15 +26,18 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"easy_sqldumper/internal/config"
+	"easy_sqldumper/internal/runner"
 )
 
 // ── MySQL / MariaDB ───────────────────────────────────────────────────────────
 
 func TestIntegration_MySQL_FetchDatabases(t *testing.T) {
 	cfg := integrationMySQLConfig(t)
-	runner := &BackupRunner{Config: cfg}
+	r := &runner.BackupRunner{Config: cfg}
 
-	dbs, err := runner.FetchDatabases()
+	dbs, err := r.FetchDatabases()
 	if err != nil {
 		t.Fatalf("FetchDatabases failed: %v", err)
 	}
@@ -55,13 +58,13 @@ func TestIntegration_MySQL_Backup(t *testing.T) {
 	dbName := requireEnv(t, "TEST_MYSQL_DB")
 	dir := t.TempDir()
 
-	runner := &BackupRunner{
+	r := &runner.BackupRunner{
 		Config:    cfg,
 		DBName:    dbName,
 		BackupDir: dir,
 	}
 
-	if err := runner.Run(); err != nil {
+	if err := r.Run(); err != nil {
 		t.Fatalf("backup failed: %v", err)
 	}
 
@@ -88,13 +91,13 @@ func TestIntegration_MySQL_BackupCleanupOnFailure(t *testing.T) {
 	cfg := integrationMySQLConfig(t)
 	dir := t.TempDir()
 
-	runner := &BackupRunner{
+	r := &runner.BackupRunner{
 		Config:    cfg,
 		DBName:    "this_database_does_not_exist_xyz",
 		BackupDir: dir,
 	}
 
-	if err := runner.Run(); err == nil {
+	if err := r.Run(); err == nil {
 		t.Fatal("expected error for non-existent database, got nil")
 	}
 
@@ -109,9 +112,9 @@ func TestIntegration_MySQL_BackupCleanupOnFailure(t *testing.T) {
 
 func TestIntegration_Postgres_FetchDatabases(t *testing.T) {
 	cfg := integrationPostgresConfig(t)
-	runner := &BackupRunner{Config: cfg}
+	r := &runner.BackupRunner{Config: cfg}
 
-	dbs, err := runner.FetchDatabases()
+	dbs, err := r.FetchDatabases()
 	if err != nil {
 		t.Fatalf("FetchDatabases failed: %v", err)
 	}
@@ -132,13 +135,13 @@ func TestIntegration_Postgres_Backup(t *testing.T) {
 	dbName := requireEnv(t, "TEST_PG_DB")
 	dir := t.TempDir()
 
-	runner := &BackupRunner{
+	r := &runner.BackupRunner{
 		Config:    cfg,
 		DBName:    dbName,
 		BackupDir: dir,
 	}
 
-	if err := runner.Run(); err != nil {
+	if err := r.Run(); err != nil {
 		t.Fatalf("backup failed: %v", err)
 	}
 
@@ -168,15 +171,15 @@ func requireEnv(t *testing.T, key string) string {
 	return val
 }
 
-func integrationMySQLConfig(t *testing.T) Config {
+func integrationMySQLConfig(t *testing.T) config.Config {
 	t.Helper()
 	host := requireEnv(t, "TEST_MYSQL_HOST")
-	cfg := Config{}
+	cfg := config.Config{}
 	cfg.Database.Type = "mysql"
 	cfg.Database.Host = host
 	cfg.Database.User = requireEnv(t, "TEST_MYSQL_USER")
 	cfg.Database.Password = requireEnv(t, "TEST_MYSQL_PASSWORD")
-	cfg.Database.Port = DefaultMySQLPort
+	cfg.Database.Port = config.DefaultMySQLPort
 	cfg.Remote.MysqlBin = "mysql"
 	cfg.Remote.MysqldumpBin = "mysqldump"
 	cfg.Remote.PsqlBin = "psql"
@@ -184,15 +187,15 @@ func integrationMySQLConfig(t *testing.T) Config {
 	return cfg
 }
 
-func integrationPostgresConfig(t *testing.T) Config {
+func integrationPostgresConfig(t *testing.T) config.Config {
 	t.Helper()
 	host := requireEnv(t, "TEST_PG_HOST")
-	cfg := Config{}
+	cfg := config.Config{}
 	cfg.Database.Type = "postgres"
 	cfg.Database.Host = host
 	cfg.Database.User = requireEnv(t, "TEST_PG_USER")
 	cfg.Database.Password = requireEnv(t, "TEST_PG_PASSWORD")
-	cfg.Database.Port = DefaultPostgresPort
+	cfg.Database.Port = config.DefaultPostgresPort
 	cfg.Remote.MysqlBin = "mysql"
 	cfg.Remote.MysqldumpBin = "mysqldump"
 	cfg.Remote.PsqlBin = "psql"

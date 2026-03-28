@@ -8,18 +8,18 @@ MANPAGE     := docs/sqldumper.1
 
 .PHONY: all build install uninstall install-man clean
 
-all: build
+all: build-all
 
 ## Build the binary for the current platform
 build:
-	go build -ldflags="-s -w" -o $(BINARY) .
+	go build -ldflags="-s -w" -o $(BINARY) ./cmd/sqldumper
 
 ## Build for Linux and macOS (arm64 + x64)
 build-all:
-	GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o bin/$(BINARY)-linux-x64 .
-	GOOS=linux  GOARCH=arm64 go build -ldflags="-s -w" -o bin/$(BINARY)-linux-arm64 .
-	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/$(BINARY)-darwin-x64 .
-	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/$(BINARY)-darwin-arm64 .
+	GOOS=linux  GOARCH=amd64 go build -ldflags="-s -w" -o bin/$(BINARY)-linux-x64 ./cmd/sqldumper
+	GOOS=linux  GOARCH=arm64 go build -ldflags="-s -w" -o bin/$(BINARY)-linux-arm64 ./cmd/sqldumper
+	GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/$(BINARY)-darwin-x64 ./cmd/sqldumper
+	GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/$(BINARY)-darwin-arm64 ./cmd/sqldumper
 
 ## Install binary + man page to $(PREFIX) (default: /usr/local)
 install: build install-man

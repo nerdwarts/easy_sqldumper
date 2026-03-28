@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package secrets
 
 import (
 	"encoding/json"
@@ -47,7 +47,7 @@ type DopplerConfig struct {
 
 var secretsHTTPClient = &http.Client{Timeout: 10 * time.Second}
 
-// resolveSecret resolves a secret value from the configured backend.
+// ResolveSecret resolves a secret value from the configured backend.
 //
 // Supported prefixes:
 //
@@ -56,7 +56,7 @@ var secretsHTTPClient = &http.Client{Timeout: 10 * time.Second}
 //	vault:mount/path#field    → HashiCorp Vault or OpenBao KV v2
 //	doppler:SECRET_NAME       → Doppler
 //	(no prefix)               → literal value (fully backward compatible)
-func resolveSecret(value string, sc SecretsConfig) (string, error) {
+func ResolveSecret(value string, sc SecretsConfig) (string, error) {
 	switch {
 	case strings.HasPrefix(value, "env:"):
 		return resolveEnv(strings.TrimPrefix(value, "env:"))

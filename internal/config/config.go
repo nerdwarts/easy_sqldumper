@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package config
 
 import (
 	"errors"
@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/pelletier/go-toml/v2"
+
+	"easy_sqldumper/internal/secrets"
 )
 
 const (
@@ -55,10 +57,12 @@ type Config struct {
 		PsqlBin      string `toml:"psql_bin"`      // default: "psql"
 		PgdumpBin    string `toml:"pgdump_bin"`    // default: "pg_dump"
 	} `toml:"remote"`
-	Secrets SecretsConfig `toml:"secrets"`
+	Secrets secrets.SecretsConfig `toml:"secrets"`
 }
 
-func loadConfig(path string) (Config, error) {
+// LoadConfig reads and validates a TOML config file, applying defaults and
+// resolving secrets from the configured backend.
+func LoadConfig(path string) (Config, error) {
 	var config Config
 	f, err := os.Open(path)
 	if err != nil {
@@ -103,7 +107,7 @@ func loadConfig(path string) (Config, error) {
 	}
 
 	// Resolve the database password from the configured secret backend
-	resolved, err := resolveSecret(config.Database.Password, config.Secrets)
+	resolved, err := secrets.ResolveSecret(config.Database.Password, config.Secrets)
 	if err != nil {
 		return config, fmt.Errorf("resolving database password: %w", err)
 	}

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package tui
 
 import (
 	"fmt"
@@ -20,6 +20,9 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+
+	"easy_sqldumper/internal/config"
+	"easy_sqldumper/internal/runner"
 )
 
 // runTUI shows the interactive multiselect and returns the selected database names.
@@ -50,13 +53,13 @@ func runTUI(dbs []string) ([]string, error) {
 
 // runBackups runs a backup for each selected database and prints per-db status.
 // Returns the names of any databases that failed.
-func runBackups(config Config, backupDir string, selected []string) []string {
+func runBackups(cfg config.Config, backupDir string, selected []string) []string {
 	fmt.Printf("\nStarting backup for %d database(s)...\n\n", len(selected))
 
 	var failed []string
 	for _, db := range selected {
-		r := &BackupRunner{
-			Config:    config,
+		r := &runner.BackupRunner{
+			Config:    cfg,
 			DBName:    db,
 			BackupDir: backupDir,
 		}
@@ -71,12 +74,12 @@ func runBackups(config Config, backupDir string, selected []string) []string {
 	return failed
 }
 
-// runInteractive is the full interactive flow: fetch DBs → multiselect → backup.
-func runInteractive(config Config, backupDir string) {
-	runner := &BackupRunner{Config: config}
+// RunInteractive is the full interactive flow: fetch DBs → multiselect → backup.
+func RunInteractive(cfg config.Config, backupDir string) {
+	r := &runner.BackupRunner{Config: cfg}
 
 	fmt.Println("☁️🔌 Connecting to DBMS and loading databases...")
-	dbs, err := runner.FetchDatabases()
+	dbs, err := r.FetchDatabases()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Error fetching databases: %v\n", err)
 		os.Exit(1)
@@ -97,7 +100,7 @@ func runInteractive(config Config, backupDir string) {
 		os.Exit(0)
 	}
 
-	failed := runBackups(config, backupDir, selected)
+	failed := runBackups(cfg, backupDir, selected)
 
 	fmt.Println()
 	if len(failed) > 0 {

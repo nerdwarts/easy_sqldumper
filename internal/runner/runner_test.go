@@ -6,16 +6,18 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 
-package main
+package runner
 
 import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"easy_sqldumper/internal/config"
 )
 
 func mysqlRunner(dbName string) *BackupRunner {
-	cfg := Config{}
+	cfg := config.Config{}
 	cfg.Database.Type = "mysql"
 	cfg.Database.User = "root"
 	cfg.Database.Password = "secret"

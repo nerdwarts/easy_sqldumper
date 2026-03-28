@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package runner
 
 import (
 	"bytes"
@@ -22,16 +22,21 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"easy_sqldumper/internal/config"
 )
 
+// BackupRunner orchestrates a single database backup.
 type BackupRunner struct {
-	Config    Config
+	Config    config.Config
 	DBName    string
 	BackupDir string
 }
 
+// Run creates the backup directory if needed and dumps the database to a
+// timestamped SQL file, cleaning up on failure.
 func (r *BackupRunner) Run() error {
-	if err := os.MkdirAll(r.BackupDir, DirPerms); err != nil {
+	if err := os.MkdirAll(r.BackupDir, config.DirPerms); err != nil {
 		return fmt.Errorf("error creating backup directory '%s': %w", r.BackupDir, err)
 	}
 
@@ -46,7 +51,7 @@ func (r *BackupRunner) Run() error {
 }
 
 func (r *BackupRunner) generateFilePath() string {
-	timestamp := time.Now().Format(TimestampFormat)
+	timestamp := time.Now().Format(config.TimestampFormat)
 	fileName := fmt.Sprintf("%s_%s.sql", r.DBName, timestamp)
 	return filepath.Join(r.BackupDir, fileName)
 }

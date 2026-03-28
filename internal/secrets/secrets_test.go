@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package secrets
 
 import (
 	"encoding/json"
@@ -23,10 +23,10 @@ import (
 	"testing"
 )
 
-// ── resolveSecret dispatcher ──────────────────────────────────────────────────
+// ── ResolveSecret dispatcher ──────────────────────────────────────────────────
 
 func TestResolveSecret_Literal(t *testing.T) {
-	got, err := resolveSecret("mysecret", SecretsConfig{})
+	got, err := ResolveSecret("mysecret", SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestResolveSecret_Literal(t *testing.T) {
 }
 
 func TestResolveSecret_Empty(t *testing.T) {
-	got, err := resolveSecret("", SecretsConfig{})
+	got, err := ResolveSecret("", SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestResolveSecret_Empty(t *testing.T) {
 
 func TestResolveSecret_Env_Set(t *testing.T) {
 	t.Setenv("SQLDUMPER_TEST_SECRET", "hello-from-env")
-	got, err := resolveSecret("env:SQLDUMPER_TEST_SECRET", SecretsConfig{})
+	got, err := ResolveSecret("env:SQLDUMPER_TEST_SECRET", SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -60,7 +60,7 @@ func TestResolveSecret_Env_Set(t *testing.T) {
 
 func TestResolveSecret_Env_NotSet(t *testing.T) {
 	os.Unsetenv("SQLDUMPER_DEFINITELY_NOT_SET_XYZ")
-	_, err := resolveSecret("env:SQLDUMPER_DEFINITELY_NOT_SET_XYZ", SecretsConfig{})
+	_, err := ResolveSecret("env:SQLDUMPER_DEFINITELY_NOT_SET_XYZ", SecretsConfig{})
 	if err == nil {
 		t.Fatal("expected error for unset env var, got nil")
 	}
@@ -79,7 +79,7 @@ func TestResolveSecret_File_Exists(t *testing.T) {
 	f.WriteString("file-secret")
 	f.Close()
 
-	got, err := resolveSecret("file:"+f.Name(), SecretsConfig{})
+	got, err := ResolveSecret("file:"+f.Name(), SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestResolveSecret_File_Exists(t *testing.T) {
 }
 
 func TestResolveSecret_File_NotFound(t *testing.T) {
-	_, err := resolveSecret("file:/nonexistent/secret.txt", SecretsConfig{})
+	_, err := ResolveSecret("file:/nonexistent/secret.txt", SecretsConfig{})
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}
@@ -103,7 +103,7 @@ func TestResolveSecret_File_TrimsTrailingNewlines(t *testing.T) {
 	f.WriteString("mypassword\n")
 	f.Close()
 
-	got, err := resolveSecret("file:"+f.Name(), SecretsConfig{})
+	got, err := ResolveSecret("file:"+f.Name(), SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestResolveSecret_File_TrimsWindowsCRLF(t *testing.T) {
 	f.WriteString("mypassword\r\n")
 	f.Close()
 
-	got, err := resolveSecret("file:"+f.Name(), SecretsConfig{})
+	got, err := ResolveSecret("file:"+f.Name(), SecretsConfig{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestResolveSecret_File_TrimsWindowsCRLF(t *testing.T) {
 // ── resolveVault ──────────────────────────────────────────────────────────────
 
 func TestResolveSecret_Vault_NoAddress(t *testing.T) {
-	_, err := resolveSecret("vault:secret/data/myapp#password", SecretsConfig{})
+	_, err := ResolveSecret("vault:secret/data/myapp#password", SecretsConfig{})
 	if err == nil {
 		t.Fatal("expected error for missing vault address, got nil")
 	}
@@ -143,7 +143,7 @@ func TestResolveSecret_Vault_NoAddress(t *testing.T) {
 
 func TestResolveSecret_Vault_NoFieldSeparator(t *testing.T) {
 	sc := SecretsConfig{Vault: VaultConfig{Address: "http://vault:8200", Token: "tok"}}
-	_, err := resolveSecret("vault:secret/data/myapp", sc)
+	_, err := ResolveSecret("vault:secret/data/myapp", sc)
 	if err == nil {
 		t.Fatal("expected error for missing # field separator, got nil")
 	}
@@ -173,7 +173,7 @@ func TestResolveSecret_Vault_Success(t *testing.T) {
 	sc := SecretsConfig{
 		Vault: VaultConfig{Address: srv.URL, Token: "test-token"},
 	}
-	got, err := resolveSecret("vault:secret/data/myapp#db_password", sc)
+	got, err := ResolveSecret("vault:secret/data/myapp#db_password", sc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestResolveSecret_Vault_HTTPError(t *testing.T) {
 	sc := SecretsConfig{
 		Vault: VaultConfig{Address: srv.URL, Token: "bad-token"},
 	}
-	_, err := resolveSecret("vault:secret/data/myapp#password", sc)
+	_, err := ResolveSecret("vault:secret/data/myapp#password", sc)
 	if err == nil {
 		t.Fatal("expected error for HTTP 403, got nil")
 	}
@@ -216,7 +216,7 @@ func TestResolveSecret_Vault_MissingField(t *testing.T) {
 	sc := SecretsConfig{
 		Vault: VaultConfig{Address: srv.URL, Token: "tok"},
 	}
-	_, err := resolveSecret("vault:secret/data/myapp#db_password", sc)
+	_, err := ResolveSecret("vault:secret/data/myapp#db_password", sc)
 	if err == nil {
 		t.Fatal("expected error for missing field, got nil")
 	}
@@ -246,7 +246,7 @@ func TestResolveSecret_Vault_TokenFromEnv(t *testing.T) {
 	sc := SecretsConfig{
 		Vault: VaultConfig{Address: srv.URL, Token: ""},
 	}
-	got, err := resolveSecret("vault:secret/data/app#pass", sc)
+	got, err := ResolveSecret("vault:secret/data/app#pass", sc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestResolveSecret_Doppler_MissingProjectOrConfig(t *testing.T) {
 	sc := SecretsConfig{
 		Doppler: DopplerConfig{Token: "tok", Project: "", Config: ""},
 	}
-	_, err := resolveSecret("doppler:DB_PASSWORD", sc)
+	_, err := ResolveSecret("doppler:DB_PASSWORD", sc)
 	if err == nil {
 		t.Fatal("expected error for missing project/config, got nil")
 	}

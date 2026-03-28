@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package config
 
 import (
 	"os"
@@ -49,10 +49,10 @@ func writeTempFile(t *testing.T, content string) string {
 	return f.Name()
 }
 
-// ── loadConfig ────────────────────────────────────────────────────────────────
+// ── LoadConfig ────────────────────────────────────────────────────────────────
 
 func TestLoadConfig_MissingFile(t *testing.T) {
-	_, err := loadConfig("/nonexistent/path/config.toml")
+	_, err := LoadConfig("/nonexistent/path/config.toml")
 	if err == nil {
 		t.Fatal("expected error for missing file, got nil")
 	}
@@ -60,7 +60,7 @@ func TestLoadConfig_MissingFile(t *testing.T) {
 
 func TestLoadConfig_InvalidTOML(t *testing.T) {
 	path := writeTOML(t, "this is not valid TOML ][")
-	_, err := loadConfig(path)
+	_, err := LoadConfig(path)
 	if err == nil {
 		t.Fatal("expected error for invalid TOML, got nil")
 	}
@@ -73,7 +73,7 @@ user = "root"
 password = "pass"
 host = "localhost"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -89,7 +89,7 @@ user = "root"
 password = "pass"
 host = "localhost"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,7 +106,7 @@ user = "postgres"
 password = "pass"
 host = "localhost"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +123,7 @@ password = "pass"
 host = "localhost"
 port = 3307
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -139,7 +139,7 @@ user = "root"
 password = "pass"
 host = "localhost"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -168,7 +168,7 @@ host = "localhost"
 mysql_bin     = "mariadb"
 mysqldump_bin = "mariadb-dump"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -188,7 +188,7 @@ user = "root"
 password = "env:TEST_DB_PASS"
 host = "localhost"
 `)
-	cfg, err := loadConfig(path)
+	cfg, err := LoadConfig(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

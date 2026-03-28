@@ -1,8 +1,10 @@
 [database]
+# "mysql" (default) or "postgres"
+type     = "mysql"
 user     = "root"
 password = "1234"
 host     = "localhost"
-port     = 3306
+port     = 3306          # defaults: mysql=3306, postgres=5432 (auto-set if omitted)
 
 [ssl]
 enabled            = false
@@ -11,23 +13,37 @@ cert               = "/path/to/client-cert.pem"
 key                = "/path/to/client-key.pem"
 verify_server_cert = false
 
-# Remote mode: mysql/mysqldump is executed directly inside the container.
-# type = "local"      → mysql/mysqldump available locally in PATH (default)
-# type = "docker"     → docker exec <container> mysqldump ...
-# type = "kubernetes" → kubectl exec <pod> -- mysqldump ...
+# Remote mode: mysql/mysqldump or psql/pg_dump is executed directly inside the container.
+# type = "local"      → binaries available locally in PATH (default)
+# type = "docker"     → docker exec <container> <bin> ...
+# type = "kubernetes" → kubectl exec <pod> -- <bin> ...
 [remote]
-#type      = "local"
+#type = "local"
 
-# Docker example:
-# type         = "docker"
-# container    = "my-mysql-container"
-# mysql_bin    = "mariadb"
+# MySQL / MariaDB – Docker example:
+# type          = "docker"
+# container     = "my-mysql-container"
+# mysql_bin     = "mariadb"
 # mysqldump_bin = "mariadb-dump"
 
-# Kubernetes example:
-type          = "kubernetes"
-namespace     = "default"
-pod           = "mariadb-685858c-w4xsg"
-mysql_bin     = "mariadb"
-mysqldump_bin = "mariadb-dump"
-# container = "mysql"   # optional, only needed for multi-container pods
+# MySQL / MariaDB – Kubernetes example:
+ type          = "kubernetes"
+ namespace     = "default"
+ pod           = "mariadb-685858c-w4xsg"
+ mysql_bin     = "mariadb"
+ mysqldump_bin = "mariadb-dump"
+# container     = "mysql"   # optional, only needed for multi-container pods
+
+# PostgreSQL – local example:
+# (set [database] type = "postgres", port = 5432)
+# [remote]
+# type       = "local"
+# psql_bin   = "psql"
+# pgdump_bin = "pg_dump"
+
+# PostgreSQL – Kubernetes example:
+# type       = "kubernetes"
+# namespace  = "default"
+# pod        = "postgres-abc123"
+# psql_bin   = "psql"
+# pgdump_bin = "pg_dump"

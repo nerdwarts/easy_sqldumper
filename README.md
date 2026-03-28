@@ -9,8 +9,10 @@ A minimal CLI tool that wraps `mysqldump` to create timestamped SQL backups of M
 ## Features
 
 - 📦 Timestamped backup files (`dbname_2026-03-24_15-04-05.sql`)
-- 🔐 Secure password handling via `--defaults-extra-file` or `MYSQL_PWD` (not visible in `ps aux`)
-- 🔒 Optional SSL/TLS support
+- 🔐 Secure password handling via `--defaults-extra-file` or `MYSQL_PWD` / `PGPASSWORD` (not visible in `ps aux`)
+- 🔒 Optional SSL/TLS support (MySQL/MariaDB)
+- 🐬 MySQL / MariaDB support (`mysqldump` / `mariadb-dump`)
+- 🐘 PostgreSQL support (`pg_dump`)
 - 🐳 Docker container support (`docker exec`)
 - ☸️ Kubernetes pod support (`kubectl exec`)
 - ⚙️ Simple TOML configuration
@@ -20,7 +22,8 @@ A minimal CLI tool that wraps `mysqldump` to create timestamped SQL backups of M
 ## Requirements
 
 - Go 1.22+
-- For **local** mode: `mysql` and `mysqldump` available in `$PATH`
+- For **local MySQL/MariaDB** mode: `mysql` and `mysqldump` (or `mariadb` / `mariadb-dump`) in `$PATH`
+- For **local PostgreSQL** mode: `psql` and `pg_dump` in `$PATH`
 - For **Docker** mode: `docker` available in `$PATH`
 - For **Kubernetes** mode: `kubectl` configured and available in `$PATH`
 
@@ -44,10 +47,12 @@ cp easy_sql_config.toml my-config.toml
 
 ```toml
 [database]
+# "mysql" (default) or "postgres"
+type     = "mysql"
 user     = "root"
 password = "your_password"
 host     = "localhost"   # use 127.0.0.1 for local; ignored in remote modes
-port     = 3306          # optional, defaults to 3306
+port     = 3306          # optional – defaults: mysql=3306, postgres=5432
 
 [ssl]
 enabled             = false
@@ -56,15 +61,15 @@ cert                = "/path/to/client-cert.pem"
 key                 = "/path/to/client-key.pem"
 verify_server_cert  = false
 
-# Remote mode – mysql/mysqldump is executed inside the container.
-# type = "local"      → mysql/mysqldump available locally in $PATH (default)
-# type = "docker"     → docker exec <container> mysqldump ...
-# type = "kubernetes" → kubectl exec <pod> -- mysqldump ...
+# Remote mode – binaries are executed inside the container.
+# type = "local"      → binaries available locally in $PATH (default)
+# type = "docker"     → docker exec <container> <bin> ...
+# type = "kubernetes" → kubectl exec <pod> -- <bin> ...
 [remote]
 type = "local"
 ```
 
-### Docker example
+### Docker example (MySQL / MariaDB)
 
 ```toml
 [database]
@@ -80,7 +85,7 @@ mysql_bin     = "mariadb"        # binary name inside the container
 mysqldump_bin = "mariadb-dump"   # binary name inside the container
 ```
 
-### Kubernetes example
+### Kubernetes example (MySQL / MariaDB)
 
 ```toml
 [database]
@@ -98,7 +103,36 @@ mysql_bin     = "mysql"
 mysqldump_bin = "mysqldump"
 ```
 
-> **Note:** In Docker and Kubernetes modes the password is injected via the `MYSQL_PWD` environment variable inside the container, so no temporary credential file is written to disk.
+### PostgreSQL – local example
+
+```toml
+[database]
+type     = "postgres"
+user     = "postgres"
+password = "your_password"
+host     = "localhost"
+port     = 5432            # optional, auto-set when type = "postgres"
+```
+
+### PostgreSQL – Kubernetes example
+
+```toml
+[database]
+type     = "postgres"
+user     = "postgres"
+password = "your_password"
+host     = "127.0.0.1"
+port     = 5432
+
+[remote]
+type       = "kubernetes"
+namespace  = "default"
+pod        = "postgres-abc123"
+# psql_bin   = "psql"     # optional – defaults to "psql"
+# pgdump_bin = "pg_dump"  # optional – defaults to "pg_dump"
+```
+
+> **Note:** In Docker and Kubernetes modes the password is injected via the `MYSQL_PWD` (MySQL/MariaDB) or `PGPASSWORD` (PostgreSQL) environment variable inside the container, so no temporary credential file is written to disk.
 
 ## Usage
 
@@ -115,11 +149,12 @@ mysqldump_bin = "mysqldump"
 
 ### Flags
 
-| Flag      | Default                    | Description                         |
-|-----------|----------------------------|-------------------------------------|
-| `-db`     | *(empty → opens TUI)*      | Name of the database to back up     |
-| `-dir`    | `./backup`                 | Directory to save the backup file   |
-| `-config` | `./easy_sql_config.toml`   | Path to the TOML configuration file |
+| Flag      | Default                    | Description                                              |
+|-----------|----------------------------|----------------------------------------------------------|
+| `-db`     | *(empty → opens TUI)*      | Name of the database to back up                          |
+| `-dir`    | `./backup`                 | Directory to save the backup file                        |
+| `-config` | `./easy_sql_config.toml`   | Path to the TOML configuration file                      |
+| `-type`   | *(from config)*            | Database type: `mysql` or `postgres` (overrides config)  |
 
 ## Output
 
@@ -135,16 +170,30 @@ Example: `./backup/my_database_2026-03-24_15-04-05.sql`
 
 Passwords are **never** passed as plain CLI arguments.
 
-- **Local mode:** the password is written to a temporary file (`sqldumper-*.cnf`) and passed to `mysqldump` via `--defaults-extra-file`. The file is deleted immediately after the dump completes.
-- **Docker / Kubernetes mode:** the password is injected via the `MYSQL_PWD` environment variable directly inside the container process — no temp file is created on the host.
+- **Local MySQL/MariaDB:** the password is written to a temporary file (`sqldumper-*.cnf`) and passed to `mysqldump` via `--defaults-extra-file`. The file is deleted immediately after the dump completes.
+- **Local PostgreSQL:** the password is set via `PGPASSWORD` on the subprocess — no temp file is created.
+- **Docker / Kubernetes mode:** the password is injected via `MYSQL_PWD` or `PGPASSWORD` directly inside the container process — no temp file is created on the host.
 
 ## License
 
-MIT
+Copyright 2026 Nerdwarts
+
+Licensed under the [Apache License, Version 2.0](LICENSE).
 
 ---
 
 ## Changelog
+
+### v1.2.0 – PostgreSQL Support *(2026-03-28)*
+
+#### ✨ New Features
+- **PostgreSQL support** – use `pg_dump` / `psql` instead of `mysqldump` / `mysql`; set `type = "postgres"` in `[database]` or pass `-type postgres` on the CLI
+- **`-type` flag** – override the database engine at runtime without editing the config file
+- **`psql_bin` / `pgdump_bin`** – configurable binary names for PostgreSQL (useful for custom installations)
+- **Auto default port** – port is automatically set to `5432` when `type = "postgres"` and no port is specified
+- **`PGPASSWORD` injection** – passwords for PostgreSQL are never passed as CLI args; injected securely via env var in all modes (local, Docker, Kubernetes)
+
+---
 
 ### v1.1.0 – Remote Backends & Interactive TUI *(2026-03-28)*
 

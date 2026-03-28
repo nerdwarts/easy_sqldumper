@@ -1,3 +1,17 @@
+// Copyright 2026 Nerdwarts
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package main
 
 import (
@@ -18,15 +32,17 @@ import (
 )
 
 const (
-	DefaultPort     = 3306
-	DirPerms        = 0755
-	TimestampFormat = "2006-01-02_15-04-05"
+	DefaultMySQLPort    = 3306
+	DefaultPostgresPort = 5432
+	DirPerms            = 0755
+	TimestampFormat     = "2006-01-02_15-04-05"
 )
 
 // --- Configuration & Runner ---
 
 type Config struct {
 	Database struct {
+		Type     string `toml:"type"` // "mysql" (default) or "postgres"
 		User     string `toml:"user"`
 		Password string `toml:"password"`
 		Host     string `toml:"host"`
@@ -46,6 +62,8 @@ type Config struct {
 		Pod          string `toml:"pod"`           // K8s: pod name
 		MysqlBin     string `toml:"mysql_bin"`     // default: "mysql"
 		MysqldumpBin string `toml:"mysqldump_bin"` // default: "mysqldump"
+		PsqlBin      string `toml:"psql_bin"`      // default: "psql"
+		PgdumpBin    string `toml:"pgdump_bin"`    // default: "pg_dump"
 	} `toml:"remote"`
 }
 
@@ -74,6 +92,32 @@ func (r *BackupRunner) generateFilePath() string {
 	timestamp := time.Now().Format(TimestampFormat)
 	fileName := fmt.Sprintf("%s_%s.sql", r.DBName, timestamp)
 	return filepath.Join(r.BackupDir, fileName)
+}
+
+// isPostgres returns true when the configured database type is PostgreSQL.
+func (r *BackupRunner) isPostgres() bool {
+	return strings.ToLower(r.Config.Database.Type) == "postgres"
+}
+
+// passwordEnvVar returns the correct env var name for the configured db type.
+func (r *BackupRunner) passwordEnvVar() string {
+	if r.isPostgres() {
+		return "PGPASSWORD"
+	}
+	return "MYSQL_PWD"
+}
+
+// buildArgsPostgres builds psql / pg_dump arguments (no inline password).
+func (r *BackupRunner) buildArgsPostgres(isDump bool) []string {
+	args := []string{
+		fmt.Sprintf("--username=%s", r.Config.Database.User),
+		fmt.Sprintf("--host=%s", r.Config.Database.Host),
+		fmt.Sprintf("--port=%d", r.Config.Database.Port),
+	}
+	if isDump && r.DBName != "" {
+		args = append(args, r.DBName)
+	}
+	return args
 }
 
 func (r *BackupRunner) buildArgs(tmpFileName string, isDump bool) []string {
@@ -122,17 +166,19 @@ func (r *BackupRunner) buildArgsRemote(isDump bool) []string {
 	return args
 }
 
-// buildRemoteCommand wraps a mysql/mysqldump command for docker or kubernetes execution.
-// Password is injected via MYSQL_PWD environment variable (no temp file needed).
-func (r *BackupRunner) buildRemoteCommand(executable string, mysqlArgs []string) (*exec.Cmd, error) {
+// buildRemoteCommand wraps a mysql/mysqldump or psql/pg_dump command for docker or kubernetes execution.
+// Password is injected via MYSQL_PWD / PGPASSWORD environment variable (no temp file needed).
+func (r *BackupRunner) buildRemoteCommand(executable string, dbArgs []string) (*exec.Cmd, error) {
 	remote := r.Config.Remote
+	pwdEnv := r.passwordEnvVar() + "=" + r.Config.Database.Password
+
 	switch strings.ToLower(remote.Type) {
 	case "docker":
 		if remote.Container == "" {
 			return nil, fmt.Errorf("remote.container must be set for docker mode")
 		}
-		args := []string{"exec", "-e", "MYSQL_PWD=" + r.Config.Database.Password, remote.Container, executable}
-		args = append(args, mysqlArgs...)
+		args := []string{"exec", "-e", pwdEnv, remote.Container, executable}
+		args = append(args, dbArgs...)
 		return exec.Command("docker", args...), nil
 
 	case "kubernetes", "k8s":
@@ -147,9 +193,9 @@ func (r *BackupRunner) buildRemoteCommand(executable string, mysqlArgs []string)
 		if remote.Container != "" {
 			args = append(args, "-c", remote.Container)
 		}
-		// Use "env" inside the container to set MYSQL_PWD without shell quoting issues
-		args = append(args, "--", "env", "MYSQL_PWD="+r.Config.Database.Password, executable)
-		args = append(args, mysqlArgs...)
+		// Use "env" inside the container to set the password var without shell quoting issues
+		args = append(args, "--", "env", pwdEnv, executable)
+		args = append(args, dbArgs...)
 		return exec.Command("kubectl", args...), nil
 
 	default:
@@ -161,25 +207,42 @@ func (r *BackupRunner) executeDump(destPath string) error {
 	var cmd *exec.Cmd
 
 	remoteType := strings.ToLower(r.Config.Remote.Type)
-	if remoteType == "docker" || remoteType == "kubernetes" || remoteType == "k8s" {
-		mysqlArgs := r.buildArgsRemote(true)
-		var err error
-		cmd, err = r.buildRemoteCommand(r.Config.Remote.MysqldumpBin, mysqlArgs)
-		if err != nil {
-			return err
+	isRemote := remoteType == "docker" || remoteType == "kubernetes" || remoteType == "k8s"
+
+	if r.isPostgres() {
+		pgArgs := r.buildArgsPostgres(true)
+		if isRemote {
+			var err error
+			cmd, err = r.buildRemoteCommand(r.Config.Remote.PgdumpBin, pgArgs)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Local mode: password via PGPASSWORD env var
+			cmd = exec.Command(r.Config.Remote.PgdumpBin, pgArgs...)
+			cmd.Env = append(os.Environ(), "PGPASSWORD="+r.Config.Database.Password)
 		}
 	} else {
-		// Local mode: password via --defaults-extra-file
-		tmpFile, err := os.CreateTemp("", "sqldumper-*.cnf")
-		if err != nil {
-			return fmt.Errorf("error creating temp config: %w", err)
-		}
-		defer os.Remove(tmpFile.Name())
-		fmt.Fprintf(tmpFile, "[client]\npassword=%s\n", r.Config.Database.Password)
-		tmpFile.Close()
+		if isRemote {
+			mysqlArgs := r.buildArgsRemote(true)
+			var err error
+			cmd, err = r.buildRemoteCommand(r.Config.Remote.MysqldumpBin, mysqlArgs)
+			if err != nil {
+				return err
+			}
+		} else {
+			// Local mode: password via --defaults-extra-file
+			tmpFile, err := os.CreateTemp("", "sqldumper-*.cnf")
+			if err != nil {
+				return fmt.Errorf("error creating temp config: %w", err)
+			}
+			defer os.Remove(tmpFile.Name())
+			fmt.Fprintf(tmpFile, "[client]\npassword=%s\n", r.Config.Database.Password)
+			tmpFile.Close()
 
-		args := r.buildArgs(tmpFile.Name(), true)
-		cmd = exec.Command("mysqldump", args...)
+			args := r.buildArgs(tmpFile.Name(), true)
+			cmd = exec.Command(r.Config.Remote.MysqldumpBin, args...)
+		}
 	}
 
 	outFile, err := os.Create(destPath)
@@ -193,38 +256,61 @@ func (r *BackupRunner) executeDump(destPath string) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("mysqldump failed: %v, stderr: %s", err, stderr.String())
+		dumpBin := r.Config.Remote.PgdumpBin
+		if !r.isPostgres() {
+			dumpBin = r.Config.Remote.MysqldumpBin
+		}
+		return fmt.Errorf("%s failed: %v, stderr: %s", dumpBin, err, stderr.String())
 	}
 	return nil
 }
 
-// FetchDatabases fetches the list of databases via the mysql CLI (local, docker or kubernetes)
+// FetchDatabases fetches the list of databases via the mysql/psql CLI (local, docker or kubernetes).
 func (r *BackupRunner) FetchDatabases() ([]string, error) {
 	var cmd *exec.Cmd
 
 	remoteType := strings.ToLower(r.Config.Remote.Type)
-	if remoteType == "docker" || remoteType == "kubernetes" || remoteType == "k8s" {
-		mysqlArgs := r.buildArgsRemote(false)
-		mysqlArgs = append(mysqlArgs, "-s", "-N", "-e", "SHOW DATABASES;")
-		var err error
-		cmd, err = r.buildRemoteCommand(r.Config.Remote.MysqlBin, mysqlArgs)
-		if err != nil {
-			return nil, err
+	isRemote := remoteType == "docker" || remoteType == "kubernetes" || remoteType == "k8s"
+
+	if r.isPostgres() {
+		// List non-template databases excluding the 'postgres' maintenance db
+		pgArgs := r.buildArgsPostgres(false)
+		pgArgs = append(pgArgs, "-t", "-A", "-c",
+			"SELECT datname FROM pg_database WHERE datistemplate = false AND datname <> 'postgres';")
+		if isRemote {
+			var err error
+			cmd, err = r.buildRemoteCommand(r.Config.Remote.PsqlBin, pgArgs)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			cmd = exec.Command(r.Config.Remote.PsqlBin, pgArgs...)
+			cmd.Env = append(os.Environ(), "PGPASSWORD="+r.Config.Database.Password)
 		}
 	} else {
-		// Local mode: password via --defaults-extra-file
-		tmpFile, err := os.CreateTemp("", "sqlclient-*.cnf")
-		if err != nil {
-			return nil, fmt.Errorf("error creating temp config: %w", err)
-		}
-		defer os.Remove(tmpFile.Name())
-		fmt.Fprintf(tmpFile, "[client]\npassword=%s\n", r.Config.Database.Password)
-		tmpFile.Close()
+		if isRemote {
+			mysqlArgs := r.buildArgsRemote(false)
+			mysqlArgs = append(mysqlArgs, "-s", "-N", "-e", "SHOW DATABASES;")
+			var err error
+			cmd, err = r.buildRemoteCommand(r.Config.Remote.MysqlBin, mysqlArgs)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			// Local mode: password via --defaults-extra-file
+			tmpFile, err := os.CreateTemp("", "sqlclient-*.cnf")
+			if err != nil {
+				return nil, fmt.Errorf("error creating temp config: %w", err)
+			}
+			defer os.Remove(tmpFile.Name())
+			fmt.Fprintf(tmpFile, "[client]\npassword=%s\n", r.Config.Database.Password)
+			tmpFile.Close()
 
-		args := r.buildArgs(tmpFile.Name(), false)
-		// -s (silent), -N (no column names), -e (execute)
-		args = append(args, "-s", "-N", "-e", "SHOW DATABASES;")
-		cmd = exec.Command("mysql", args...)
+			args := r.buildArgs(tmpFile.Name(), false)
+			// -s (silent), -N (no column names), -e (execute)
+			args = append(args, "-s", "-N", "-e", "SHOW DATABASES;")
+			cmd = exec.Command(r.Config.Remote.MysqlBin, args...)
+		}
 	}
 
 	out, err := cmd.Output()
@@ -235,10 +321,15 @@ func (r *BackupRunner) FetchDatabases() ([]string, error) {
 	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 	var dbs []string
 	for _, line := range lines {
-		// filter out system databases
-		if line != "information_schema" && line != "performance_schema" && line != "" {
-			dbs = append(dbs, line)
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
 		}
+		// Filter out MySQL system databases
+		if line == "information_schema" || line == "performance_schema" || line == "sys" {
+			continue
+		}
+		dbs = append(dbs, line)
 	}
 	return dbs, nil
 }
@@ -326,11 +417,17 @@ func main() {
 	dbName := flag.String("db", "", "Name of the database (if missing, TUI will open)")
 	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
 	configFile := flag.String("config", "./easy_sql_config.toml", "Path to the TOML configuration file")
+	dbType := flag.String("type", "", "Database type: \"mysql\" or \"postgres\" (overrides config)")
 	flag.Parse()
 
 	config, err := loadConfig(*configFile)
 	if err != nil {
 		log.Fatalf("❌ Configuration error: %v", err)
+	}
+
+	// CLI flag overrides config
+	if *dbType != "" {
+		config.Database.Type = *dbType
 	}
 
 	runner := &BackupRunner{
@@ -415,14 +512,33 @@ func loadConfig(path string) (Config, error) {
 		return config, fmt.Errorf("error parsing config: %w", err)
 	}
 
-	if config.Database.Port == 0 {
-		config.Database.Port = DefaultPort
+	// Defaults for database type
+	if config.Database.Type == "" {
+		config.Database.Type = "mysql"
 	}
+	if config.Database.Port == 0 {
+		if strings.ToLower(config.Database.Type) == "postgres" {
+			config.Database.Port = DefaultPostgresPort
+		} else {
+			config.Database.Port = DefaultMySQLPort
+		}
+	}
+
+	// Defaults for MySQL binaries
 	if config.Remote.MysqlBin == "" {
 		config.Remote.MysqlBin = "mysql"
 	}
 	if config.Remote.MysqldumpBin == "" {
 		config.Remote.MysqldumpBin = "mysqldump"
 	}
+
+	// Defaults for PostgreSQL binaries
+	if config.Remote.PsqlBin == "" {
+		config.Remote.PsqlBin = "psql"
+	}
+	if config.Remote.PgdumpBin == "" {
+		config.Remote.PgdumpBin = "pg_dump"
+	}
+
 	return config, nil
 }

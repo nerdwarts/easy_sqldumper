@@ -1,6 +1,6 @@
 # Easy SQLdumper
 
-A minimal CLI tool that wraps `mysqldump` to create timestamped SQL backups of MySQL/MariaDB databases, configured via a TOML file. Supports **local**, **Docker** and **Kubernetes** database targets.
+A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **PostgreSQL** databases, configured via a TOML file. Supports **local**, **Docker** and **Kubernetes** database targets with an interactive multiselect TUI.
 
 ## Demo
 
@@ -10,13 +10,13 @@ A minimal CLI tool that wraps `mysqldump` to create timestamped SQL backups of M
 
 - 📦 Timestamped backup files (`dbname_2026-03-24_15-04-05.sql`)
 - 🔐 Secure password handling via `--defaults-extra-file` or `MYSQL_PWD` / `PGPASSWORD` (not visible in `ps aux`)
-- 🔒 Optional SSL/TLS support (MySQL/MariaDB)
+- 🔒 Optional SSL/TLS support with startup validation (MySQL/MariaDB)
 - 🐬 MySQL / MariaDB support (`mysqldump` / `mariadb-dump`)
 - 🐘 PostgreSQL support (`pg_dump`)
 - 🐳 Docker container support (`docker exec`)
 - ☸️ Kubernetes pod support (`kubectl exec`)
 - ⚙️ Simple TOML configuration
-- 🎛️ Interactive TUI for database selection (Bubble Tea)
+- 🎛️ Interactive multiselect TUI powered by [`charmbracelet/huh`](https://github.com/charmbracelet/huh)
 - 🧹 Automatic cleanup of partial backups on failure
 
 ## Requirements
@@ -193,6 +193,31 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 ---
 
 ## Changelog
+
+### v1.3.0 – Multiselect TUI, SSL Validation & Code Refactoring *(2026-03-28)*
+
+#### ✨ New Features
+- **Multiselect TUI** – replaced the single-select Bubble Tea table with a [`charmbracelet/huh`](https://github.com/charmbracelet/huh) multiselect; back up multiple databases in one run
+- **SSL configuration validation** – on startup, the tool now validates the SSL config before connecting:
+  - `ssl.ca` is required when `enabled = true`; file existence is checked
+  - `ssl.cert` and `ssl.key` must always be provided together
+  - `ssl.verify_server_cert = true` requires `ssl.ca` to be set
+  - SSL is not supported for PostgreSQL (hard error)
+  - Orphaned SSL fields when `enabled = false` produce a clear warning
+
+#### ♻️ Refactoring
+- Source code split into focused files: `main.go`, `config.go`, `runner.go`, `tui.go`
+
+#### 🎛️ TUI controls
+| Key            | Action |~~~~
+|----------------|--------|
+| `↑` / `↓`      | Navigate |
+| `x` or `Space` | Toggle selection |
+| `Ctrl+A`       | Select / deselect all |
+| `Enter`        | Confirm and start backups |
+| `Ctrl+C`       | Quit without doing anything |
+
+---
 
 ### v1.2.0 – PostgreSQL Support *(2026-03-28)*
 

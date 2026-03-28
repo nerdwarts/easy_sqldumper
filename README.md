@@ -31,9 +31,58 @@ A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **Postg
 
 ```bash
 git clone https://github.com/nerdwarts/easy_sqldumper.git
-cd sqldumper
+cd easy_sqldumper
 go build -o sqldumper .
 ```
+
+Pre-built binaries for `arm64` and `x64` are attached to each release.
+
+## Man Page
+
+A man page is included at `docs/sqldumper.1`. Install it with:
+
+```bash
+# Install binary + man page (requires write access to /usr/local)
+make install
+
+# Install only the man page
+make install-man
+
+# Install to a custom prefix (e.g. ~/.local)
+make install PREFIX=~/.local
+```
+
+After installation:
+
+```bash
+man sqldumper
+```
+
+To uninstall:
+
+```bash
+make uninstall
+```
+
+### Manual install (without make)
+
+```bash
+# macOS / Linux
+sudo cp docs/sqldumper.1 /usr/local/share/man/man1/sqldumper.1
+sudo gzip /usr/local/share/man/man1/sqldumper.1   # optional but conventional
+man sqldumper
+```
+
+## Makefile targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Build binary for the current platform |
+| `make build-all` | Cross-compile for Linux & macOS (arm64 + x64) |
+| `make install` | Build + install binary and man page to `$(PREFIX)/` |
+| `make install-man` | Install only the man page |
+| `make uninstall` | Remove binary and man page |
+| `make clean` | Remove local build artefacts |
 
 ## Configuration
 

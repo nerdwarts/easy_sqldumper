@@ -1,0 +1,294 @@
+.\" Man page for Easy SQLdumper
+.\" Contact: https://github.com/nerdwarts/easy_sqldumper
+.TH SQLDUMPER 1 "2026-03-28" "v1.3.0" "Easy SQLdumper Manual"
+
+.SH NAME
+sqldumper \- create timestamped SQL backups of MySQL/MariaDB and PostgreSQL databases
+
+.SH SYNOPSIS
+.nf
+\fBsqldumper\fR [\fB\-config\fR \fIfile\fR] [\fB\-db\fR \fIname\fR] [\fB\-dir\fR \fIpath\fR] [\fB\-type\fR \fImysql\fR|\fIpostgres\fR]
+.fi
+
+.SH DESCRIPTION
+.B sqldumper
+is a CLI tool that wraps
+.BR mysqldump (1)
+or
+.BR pg_dump (1)
+to create timestamped SQL backup files, configured via a TOML file.
+.PP
+When run without the
+.B \-db
+flag, an interactive multiselect TUI opens, letting you pick one or more
+databases to back up in a single run.
+When
+.B \-db
+is supplied the tool runs non-interactively — suitable for cron jobs and scripts.
+.PP
+Databases can be reached directly (local binaries in
+.IR $PATH ),
+inside a Docker container
+.RB ( "docker exec" ),
+or inside a Kubernetes pod
+.RB ( "kubectl exec" ).
+
+.SH OPTIONS
+.TP
+.BR \-config " " \fIfile\fR
+Path to the TOML configuration file.
+Default:
+.IR ./easy_sql_config.toml .
+
+.TP
+.BR \-db " " \fIname\fR
+Name of the database to back up (non-interactive / scripting mode).
+When omitted the interactive multiselect TUI opens.
+
+.TP
+.BR \-dir " " \fIpath\fR
+Directory in which backup files are saved.
+Default:
+.IR ./backup .
+
+.TP
+.BR \-type " " \fImysql\fR|\fIpostgres\fR
+Database engine. Overrides the
+.B type
+field in the
+.B [database]
+section of the config file. Accepted values:
+.IR mysql " (default),"
+.IR postgres .
+
+.SH CONFIGURATION FILE
+The configuration file uses TOML syntax. By default
+.B sqldumper
+looks for
+.I easy_sql_config.toml
+in the current working directory.
+
+.SS [database]
+.TP
+.B type
+Database engine:
+.IR mysql " (default) or " postgres .
+.TP
+.B user
+Database user name.
+.TP
+.B password
+Database password. Never passed as a plain CLI argument — see
+.BR SECURITY .
+.TP
+.B host
+Hostname or IP address of the database server.
+.TP
+.B port
+TCP port. Defaults to
+.B 3306
+for MySQL/MariaDB and
+.B 5432
+for PostgreSQL when omitted.
+
+.SS [ssl]
+Applies to MySQL/MariaDB only.
+.TP
+.B enabled
+Set to
+.B true
+to enable SSL/TLS. When
+.B false
+all other SSL fields are ignored.
+.TP
+.B ca
+Path to the CA certificate file. Required when
+.B enabled = true.
+.TP
+.B cert
+Path to the client certificate file. Must be set together with
+.BR key .
+.TP
+.B key
+Path to the client private key file. Must be set together with
+.BR cert .
+.TP
+.B verify_server_cert
+Set to
+.B true
+to verify the server certificate against
+.BR ca .
+Requires
+.B ca
+to be set.
+
+.SS [remote]
+.TP
+.B type
+Execution mode:
+.IR local " (default),"
+.IR docker ,
+.IR kubernetes " (or " k8s ).
+.TP
+.B container
+Docker container name (required for
+.IR docker " mode)."
+Also used as the container name inside a Kubernetes pod (optional).
+.TP
+.B pod
+Kubernetes pod name (required for
+.IR kubernetes " mode)."
+.TP
+.B namespace
+Kubernetes namespace. Defaults to the current
+.BR kubectl (1)
+context namespace when omitted.
+.TP
+.B mysql_bin
+Name of the MySQL client binary inside the target. Default:
+.IR mysql .
+.TP
+.B mysqldump_bin
+Name of the mysqldump binary inside the target. Default:
+.IR mysqldump .
+.TP
+.B psql_bin
+Name of the psql binary inside the target. Default:
+.IR psql .
+.TP
+.B pgdump_bin
+Name of the pg_dump binary inside the target. Default:
+.IR pg_dump .
+
+.SH INTERACTIVE TUI
+When
+.B \-db
+is not supplied
+.B sqldumper
+fetches the list of available databases and opens a multiselect menu.
+.PP
+.TS
+l l.
+Key	Action
+\fB↑\fR / \fB↓\fR	Navigate up / down
+\fBx\fR or \fBSpace\fR	Toggle selection
+\fBCtrl+A\fR	Select / deselect all
+\fBEnter\fR	Confirm selection and start backups
+\fBCtrl+C\fR	Quit without doing anything
+.TE
+
+.SH EXAMPLES
+.TP
+Open the interactive multiselect TUI:
+.B sqldumper
+
+.TP
+Back up a single database non-interactively:
+.B sqldumper -db mydb
+
+.TP
+Use a custom config file and output directory:
+.B sqldumper -db mydb -config /etc/easy_sql_config.toml -dir /var/backups/mysql
+
+.TP
+Override the database engine at runtime:
+.B sqldumper -type postgres
+
+.TP
+Run as a daily cron job:
+.nf
+0 2 * * * /usr/local/bin/sqldumper -db mydb -dir /var/backups/mysql >> /var/log/sqldumper.log 2>&1
+.fi
+
+.SH OUTPUT
+Backup files are named:
+.PP
+.I <dir>/<dbname>_<YYYY-MM-DD_HH-MM-SS>.sql
+.PP
+Example:
+.I ./backup/mydb_2026-03-28_02-00-00.sql
+.PP
+Partial files are removed automatically if the dump fails.
+
+.SH SECURITY
+Passwords are never passed as plain CLI arguments and are never visible in
+.BR ps (1)
+output.
+.TP
+.B Local MySQL/MariaDB
+The password is written to a temporary
+.I sqldumper-*.cnf
+file and passed to
+.BR mysqldump (1)
+via
+.BR \-\-defaults\-extra\-file .
+The file is deleted immediately after the dump completes.
+.TP
+.B Local PostgreSQL
+The password is set via the
+.B PGPASSWORD
+environment variable on the subprocess. No temp file is created.
+.TP
+.B Docker / Kubernetes
+The password is injected via
+.B MYSQL_PWD
+(MySQL/MariaDB) or
+.B PGPASSWORD
+(PostgreSQL) directly inside the container process. No temp file is created on the host.
+
+.SH FILES
+.TP
+.I ./easy_sql_config.toml
+Default configuration file location.
+.TP
+.I ./backup/
+Default directory for backup files.
+
+.SH REQUIREMENTS
+.TP
+.B Local MySQL/MariaDB mode
+.BR mysql (1)
+and
+.BR mysqldump (1)
+(or
+.B mariadb
+/
+.BR mariadb-dump )
+must be available in
+.IR $PATH .
+.TP
+.B Local PostgreSQL mode
+.BR psql (1)
+and
+.BR pg_dump (1)
+must be available in
+.IR $PATH .
+.TP
+.B Docker mode
+.BR docker (1)
+must be available in
+.IR $PATH .
+.TP
+.B Kubernetes mode
+.BR kubectl (1)
+must be configured and available in
+.IR $PATH .
+
+.SH LICENSE
+Copyright 2026 Nerdwarts.
+.PP
+Licensed under the Apache License, Version 2.0.
+See
+.I https://www.apache.org/licenses/LICENSE-2.0
+for the full license text.
+
+.SH SEE ALSO
+.BR mysqldump (1),
+.BR pg_dump (1),
+.BR docker (1),
+.BR kubectl (1)
+
+
+
+
+

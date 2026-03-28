@@ -58,7 +58,7 @@ A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **Postg
 ```bash
 git clone https://github.com/nerdwarts/easy_sqldumper.git
 cd easy_sqldumper
-go build -o sqldumper .
+go build -o sqldumper ./cmd/sqldumper
 ```
 
 Pre-built binaries for `arm64` and `x64` are attached to each release.
@@ -366,6 +366,19 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 ---
 
 ## Changelog
+
+### v1.4.1 – Project layout refactoring *(2026-03-29)*
+
+#### ♻️ Refactoring
+- Source code migrated to a standard Go project layout:
+  - `cmd/sqldumper/` — entry point and integration tests
+  - `internal/config/` — `Config` struct, constants, `LoadConfig`
+  - `internal/secrets/` — secret resolution (env, file, Vault, Doppler)
+  - `internal/runner/` — `BackupRunner` (Run, FetchDatabases)
+  - `internal/tui/` — interactive multiselect TUI flow
+- No behaviour changes; all existing flags, config files and outputs remain identical
+
+---
 
 ### v1.4.0 – Secrets Management *(2026-03-29)*
 

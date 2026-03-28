@@ -55,6 +55,7 @@ type Config struct {
 		PsqlBin      string `toml:"psql_bin"`      // default: "psql"
 		PgdumpBin    string `toml:"pgdump_bin"`    // default: "pg_dump"
 	} `toml:"remote"`
+	Secrets SecretsConfig `toml:"secrets"`
 }
 
 func loadConfig(path string) (Config, error) {
@@ -100,6 +101,13 @@ func loadConfig(path string) (Config, error) {
 	if err := config.validateSSL(); err != nil {
 		return config, fmt.Errorf("SSL configuration error: %w", err)
 	}
+
+	// Resolve the database password from the configured secret backend
+	resolved, err := resolveSecret(config.Database.Password, config.Secrets)
+	if err != nil {
+		return config, fmt.Errorf("resolving database password: %w", err)
+	}
+	config.Database.Password = resolved
 
 	return config, nil
 }

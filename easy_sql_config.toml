@@ -2,7 +2,13 @@
 # "mysql" (default) or "postgres"
 type     = "mysql"
 user     = "root"
+# Literal password (default, backward compatible):
 password = "1234"
+# — or reference a secret backend:
+# password = "env:DB_PASSWORD"              # any env-injecting tool (Doppler CLI, Vault Agent, …)
+# password = "file:/run/secrets/db_pass"   # Docker / K8s secret mount
+# password = "vault:secret/data/myapp#db_password"   # HashiCorp Vault or OpenBao KV v2
+# password = "doppler:DB_PASSWORD"         # Doppler
 host     = "localhost"
 port     = 3306          # defaults: mysql=3306, postgres=5432 (auto-set if omitted)
 
@@ -47,3 +53,18 @@ verify_server_cert = false
 # pod        = "postgres-abc123"
 # psql_bin   = "psql"
 # pgdump_bin = "pg_dump"
+
+# ── Secret backends ────────────────────────────────────────────────────────────
+# Configure one provider below if you use vault: or doppler: references above.
+# The token fields themselves also support "env:" references.
+
+# HashiCorp Vault or OpenBao (identical API — just change the address):
+# [secrets.vault]
+# address = "https://vault.example.com:8200"
+# token   = "env:VAULT_TOKEN"   # or a literal token (not recommended)
+
+# Doppler:
+# [secrets.doppler]
+# token   = "env:DOPPLER_TOKEN"
+# project = "my-project"
+# config  = "production"

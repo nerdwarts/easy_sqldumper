@@ -6,6 +6,32 @@ A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **Postg
 
 ![Demo](docs/img_1.png)
 
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Man Page](#man-page)
+- [Makefile targets](#makefile-targets)
+- [Configuration](#configuration)
+  - [Full example](#full-example-easy_sql_configtoml)
+  - [Docker (MySQL / MariaDB)](#docker-example-mysql--mariadb)
+  - [Kubernetes (MySQL / MariaDB)](#kubernetes-example-mysql--mariadb)
+  - [PostgreSQL – local](#postgresql--local-example)
+  - [PostgreSQL – Kubernetes](#postgresql--kubernetes-example)
+- [Usage](#usage)
+  - [Interactive TUI controls](#interactive-tui-controls)
+  - [Flags](#flags)
+- [Output](#output)
+- [Secrets Management](#secrets-management)
+  - [env: – environment variable](#env--environment-variable)
+  - [file: – Docker & Kubernetes secret mount](#file--file--docker--kubernetes-secret-mount)
+  - [vault: – HashiCorp Vault or OpenBao](#vault--hashicorp-vault-or-openbao)
+  - [doppler: – Doppler](#doppler--doppler)
+- [Security](#security)
+- [License](#license)
+- [Changelog](#changelog)
+
 ## Features
 
 - 📦 Timestamped backup files (`dbname_2026-03-24_15-04-05.sql`)
@@ -225,6 +251,104 @@ Backups are saved as:
 
 Example: `./backup/my_database_2026-03-24_15-04-05.sql`
 
+## Secrets Management
+
+Instead of storing the database password as a plain string in the config file, you can reference a secret from an external backend using a prefix in the `password` field. All other config values remain unchanged — this is fully backward compatible.
+
+### Supported backends
+
+| Prefix | Resolves from | Example |
+|--------|--------------|---------|
+| *(no prefix)* | Literal value | `"s3cr3t"` |
+| `env:` | OS environment variable | `"env:DB_PASSWORD"` |
+| `file:` | File contents (trailing newline stripped) | `"file:/run/secrets/db_pass"` |
+| `vault:` | HashiCorp Vault **or OpenBao** KV v2 | `"vault:secret/data/myapp#db_password"` |
+| `doppler:` | Doppler | `"doppler:DB_PASSWORD"` |
+
+---
+
+### `env:` — environment variable
+
+Works with **any** secret manager that supports env-var injection (Doppler CLI, Vault Agent, AWS Secrets Manager, 1Password CLI, …):
+
+```toml
+[database]
+password = "env:DB_PASSWORD"
+```
+
+```bash
+# Doppler CLI injects env vars automatically:
+doppler run -- sqldumper
+
+# Vault Agent can also inject env vars:
+DB_PASSWORD=... sqldumper
+```
+
+---
+
+### `file:` — file / Docker & Kubernetes secret mount
+
+```toml
+[database]
+password = "file:/run/secrets/db_password"
+```
+
+```yaml
+# Kubernetes secret volume example
+volumes:
+  - name: db-secret
+    secret:
+      secretName: my-db-secret
+volumeMounts:
+  - name: db-secret
+    mountPath: /run/secrets
+    readOnly: true
+```
+
+---
+
+### `vault:` — HashiCorp Vault or OpenBao
+
+Both Vault and [OpenBao](https://openbao.org) use the same API — only the `address` differs.
+
+```toml
+[database]
+password = "vault:secret/data/myapp#db_password"
+#                 ^^^^^^^^^^^^^^^^^ KV v2 path
+#                                   ^^^^^^^^^^^ field name inside the secret
+
+[secrets.vault]
+address = "https://vault.example.com:8200"
+token   = "env:VAULT_TOKEN"   # token itself can be an env: reference
+```
+
+The path format is `mount/data/path-to-secret#field`, which matches the [KV v2 API path](https://developer.hashicorp.com/vault/docs/secrets/kv/kv-v2).
+
+**OpenBao** — identical config, just point `address` at your OpenBao server:
+```toml
+[secrets.vault]
+address = "https://openbao.example.com:8200"
+token   = "env:VAULT_TOKEN"
+```
+
+---
+
+### `doppler:` — Doppler
+
+```toml
+[database]
+password = "doppler:DB_PASSWORD"
+
+[secrets.doppler]
+token   = "env:DOPPLER_TOKEN"   # or a Service Token literal
+project = "my-project"
+config  = "production"
+```
+
+> **Tip:** For Doppler, the `env:` prefix approach is simpler if you already use the Doppler CLI (`doppler run -- sqldumper`). The native `doppler:` integration is useful when you cannot run the CLI (e.g. inside a container without the CLI installed).
+
+---
+
 ## Security
 
 Passwords are **never** passed as plain CLI arguments.
@@ -242,6 +366,23 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 ---
 
 ## Changelog
+
+### v1.4.0 – Secrets Management *(2026-03-29)*
+
+#### ✨ New Features
+- **Secret backend support** – the `password` field in `[database]` now accepts prefix-based secret references instead of plain-text values:
+  - `env:VAR` – OS environment variable (works with any env-injecting tool: Doppler CLI, Vault Agent, 1Password CLI, …)
+  - `file:/path` – file contents; trailing newlines stripped (Docker/Kubernetes secret mounts)
+  - `vault:mount/path#field` – HashiCorp Vault or **OpenBao** KV v2 via HTTP API (no SDK dependency)
+  - `doppler:SECRET_NAME` – Doppler via HTTP API (no SDK dependency)
+- **`[secrets.vault]`** config section – `address` and `token` for Vault / OpenBao
+- **`[secrets.doppler]`** config section – `token`, `project`, `config` for Doppler
+- Token fields themselves support `env:` references so no credentials are ever stored in plain text
+
+#### ✅ Backward Compatible
+Literal passwords continue to work without any config changes.
+
+---
 
 ### v1.3.0 – Multiselect TUI, SSL Validation & Code Refactoring *(2026-03-28)*
 

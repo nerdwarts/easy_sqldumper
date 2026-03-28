@@ -142,3 +142,38 @@ Passwords are **never** passed as plain CLI arguments.
 
 MIT
 
+---
+
+## Changelog
+
+### v1.1.0 – Remote Backends & Interactive TUI *(2026-03-28)*
+
+#### ✨ New Features
+- **Docker support** – run `mysqldump`/`mysql` inside a Docker container via `docker exec`; password is injected via `MYSQL_PWD` (no temp file on the host)
+- **Kubernetes support** – run dumps inside a K8s pod via `kubectl exec`; supports optional namespace and multi-container pods
+- **Interactive TUI** – Bubble Tea-powered table UI to browse and select databases interactively
+- **Custom binary names** – configure `mysql_bin` / `mysqldump_bin` per remote target (useful for MariaDB: `mariadb`, `mariadb-dump`)
+- **SSL/TLS support** – configure CA, cert, key and server-cert verification in the `[ssl]` section
+
+#### ♻️ Refactoring
+- Config file renamed from `dumper.toml` → `easy_sql_config.toml`
+- Module and binary renamed for clarity
+- Password handling: local mode uses `--defaults-extra-file` (temp file), remote modes use `MYSQL_PWD` env injection inside the container
+
+#### 🔒 Security
+- Passwords are never passed as plain CLI arguments in any mode
+- Temp credential files are deleted immediately after use (local mode)
+
+#### 📝 Docs
+- README updated with Docker & Kubernetes examples, flag reference, security section and demo screenshot
+
+---
+
+### v1.0.0 – Initial Release *(2026-03-24)*
+
+- Initial implementation of MySQL/MariaDB dump CLI tool
+- TOML-based configuration (`dumper.toml`)
+- Timestamped backup files
+- Secure password handling via `--defaults-extra-file`
+- Automatic cleanup of partial backups on failure
+- Pre-built binaries for `arm64` and `x64`

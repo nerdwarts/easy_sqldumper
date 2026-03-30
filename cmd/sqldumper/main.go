@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"easy_sqldumper/internal/config"
 	"easy_sqldumper/internal/runner"
@@ -26,9 +27,11 @@ import (
 )
 
 func main() {
+	defaultConfig := defaultConfigPath()
+
 	dbName := flag.String("db", "", "Name of the database (if missing, interactive multiselect opens)")
 	backupDir := flag.String("dir", "./backup", "Directory where the backup should be saved")
-	configFile := flag.String("config", "./.easy_sql_config.toml", "Path to the TOML configuration file")
+	configFile := flag.String("config", defaultConfig, "Path to the TOML configuration file")
 	dbType := flag.String("type", "", "Database type: \"mysql\" or \"postgres\" (overrides config)")
 	flag.Parse()
 
@@ -59,4 +62,20 @@ func main() {
 
 	// Case 2: Interactive multiselect TUI
 	tui.RunInteractive(cfg, *backupDir)
+}
+
+// defaultConfigPath returns the path to easy_sql_config.toml located in the
+// same directory as the running binary. If the executable path cannot be
+// resolved, it falls back to the current working directory.
+func defaultConfigPath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "./.easy_sql_config.toml"
+	}
+	// Resolve symlinks so the path points at the real binary location.
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "./.easy_sql_config.toml"
+	}
+	return filepath.Join(filepath.Dir(exe), ".easy_sql_config.toml")
 }

@@ -19,6 +19,7 @@ A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **Postg
   - [Kubernetes (MySQL / MariaDB)](#kubernetes-example-mysql--mariadb)
   - [PostgreSQL – local](#postgresql--local-example)
   - [PostgreSQL – Kubernetes](#postgresql--kubernetes-example)
+- [Shell Integration (init)](#shell-integration-init)
 - [Usage](#usage)
   - [Interactive TUI controls](#interactive-tui-controls)
   - [Flags](#flags)
@@ -44,6 +45,7 @@ A CLI tool for creating timestamped SQL backups of **MySQL/MariaDB** and **Postg
 - ⚙️ Simple TOML configuration
 - 🎛️ Interactive multiselect TUI powered by [`charmbracelet/huh`](https://github.com/charmbracelet/huh)
 - 🧹 Automatic cleanup of partial backups on failure
+- 🚀 One-command shell integration via `sqldumper init` (bash, fish, nushell)
 
 ## Requirements
 
@@ -209,6 +211,39 @@ pod        = "postgres-abc123"
 
 > **Note:** In Docker and Kubernetes modes the password is injected via the `MYSQL_PWD` (MySQL/MariaDB) or `PGPASSWORD` (PostgreSQL) environment variable inside the container, so no temporary credential file is written to disk.
 
+## Shell Integration (init)
+
+Run `sqldumper init` once after installation to add the binary to `$PATH` and register a short `esd` alias in your shell config:
+
+```bash
+sqldumper init                  # auto-detect shell
+sqldumper init --shell fish     # force a specific shell
+sqldumper init --no-alias       # skip the esd alias
+```
+
+### Shell detection
+
+The shell is auto-detected in order from: `$FISH_VERSION` (fish), `$NU_VERSION` (nushell), then `basename($SHELL)`. Use `--shell` to override.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--shell` | auto-detect | Target shell: `bash`, `fish`, `nu` |
+| `--no-alias` | `false` | Skip creating the `esd` alias |
+
+### What gets written
+
+| Shell | File(s) | Lines added |
+|-------|---------|-------------|
+| **bash** | `~/.bashrc` (or `~/.bash_profile`) | `export PATH="/path:$PATH"` and `alias esd="/path/to/sqldumper"` |
+| **fish** | `~/.config/fish/config.fish` | `fish_add_path "/path"` and `alias esd="/path/to/sqldumper"` |
+| **nushell** | `env.nu` (PATH) and `config.nu` (alias) | `$env.PATH = ($env.PATH \| prepend "…")` and `alias esd = /path/to/sqldumper` |
+
+All writes are **idempotent** — running `init` twice will not duplicate lines. Parent directories are created automatically if they don't exist.
+
+---
+
 ## Usage
 
 ```bash
@@ -236,10 +271,10 @@ pod        = "postgres-abc123"
 
 | Flag      | Default                    | Description                                              |
 |-----------|----------------------------|----------------------------------------------------------|
-| `-db`     | *(empty → opens TUI)*      | Name of the database to back up                          |
-| `-dir`    | `./backup`                 | Directory to save the backup file                        |
-| `-config` | `./easy_sql_config.toml`   | Path to the TOML configuration file                      |
-| `-type`   | *(from config)*            | Database type: `mysql` or `postgres` (overrides config)  |
+| `-db`     | *(empty → opens TUI)*      | Name of the database to back up                                       |
+| `-dir`    | `./backup`                 | Directory to save the backup file                                     |
+| `-config` | next to the binary         | Path to the TOML configuration file                                   |
+| `-type`   | *(from config)*            | Database type: `mysql` or `postgres` (overrides config)               |
 
 ## Output
 
@@ -366,6 +401,21 @@ Licensed under the [Apache License, Version 2.0](LICENSE).
 ---
 
 ## Changelog
+
+### v1.5.0 – Shell Integration *(2026-03-30)*
+
+#### ✨ New Features
+- **`sqldumper init`** — new subcommand that sets up the binary in your shell after installation:
+  - Adds the binary's directory to `$PATH`
+  - Registers an `esd` alias pointing to the binary's absolute path
+  - Supports **bash**, **fish** and **nushell**
+  - Auto-detects the active shell; override with `--shell bash|fish|nu`
+  - `--no-alias` flag skips alias creation
+  - All writes are idempotent and annotated with a comment
+  - Respects `$XDG_CONFIG_HOME` for fish and nushell config paths
+- **Config file resolved next to the binary** — the default `-config` path is now computed relative to the binary's own location (symlinks resolved), so the tool works regardless of the working directory
+
+---
 
 ### v1.4.1 – Project layout refactoring *(2026-03-29)*
 

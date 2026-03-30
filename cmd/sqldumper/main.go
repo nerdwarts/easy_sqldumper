@@ -27,6 +27,12 @@ import (
 )
 
 func main() {
+	// Subcommand routing — must happen before flag.Parse()
+	if len(os.Args) > 1 && os.Args[1] == "init" {
+		runInit(os.Args[2:])
+		return
+	}
+
 	defaultConfig := defaultConfigPath()
 
 	dbName := flag.String("db", "", "Name of the database (if missing, interactive multiselect opens)")
@@ -68,14 +74,19 @@ func main() {
 // same directory as the running binary. If the executable path cannot be
 // resolved, it falls back to the current working directory.
 func defaultConfigPath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "./.easy_sql_config.toml"
-	}
-	// Resolve symlinks so the path points at the real binary location.
-	exe, err = filepath.EvalSymlinks(exe)
+	exe, err := resolvedExecutable()
 	if err != nil {
 		return "./.easy_sql_config.toml"
 	}
 	return filepath.Join(filepath.Dir(exe), ".easy_sql_config.toml")
+}
+
+// resolvedExecutable returns the absolute, symlink-resolved path of the
+// running binary.
+func resolvedExecutable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
 }

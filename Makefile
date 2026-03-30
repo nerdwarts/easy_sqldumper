@@ -1,4 +1,4 @@
-BINARY  := sqldumper
+BINARY  := easy_sqldumper
 VERSION := v1.3.0
 
 PREFIX      ?= /usr/local
